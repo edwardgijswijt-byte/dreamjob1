@@ -1,60 +1,23 @@
-import { OpenAI } from 'openai';
-import Replicate from 'replicate';
-import FormData from 'form-data';
-import fetch from 'node-fetch';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
-
-export const config = { api: { bodyParser: false } };
-
+// pages/api/generate.js  –  JSON-only, no files
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
+  const { jobUrl, audio } = req.body;   // audio = base64 string
+  if (!jobUrl) return res.status(400).json({ error: 'Missing jobUrl' });
+
   try {
-    const form = new FormData();
-    await new Promise((resolve, reject) => {
-      req.pipe(form);
-      form.once('end', resolve);
-      form.once('error', reject);
-    });
+    // 1. dummy job data
+    const job = { title: 'Frontend Developer', company: 'ACME' };
 
-    const jobUrl = form.get('jobUrl');
-    const audioFile = form.get('audio');
+    // 2. dummy cover letter
+    const letter = `Dear ACME,\n\nI love ${job.title} and will ship features in week 1.\n\nBest,\nApplicant`;
 
-    // 1. SCRAPE JOB
-    const fireRes = await fetch('https://api.firecrawl.dev/v0/scrape', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: jobUrl })
-    });
-    const jobData = (await fireRes.json()).data;
+    // 3. dummy URLs (later vervangen we door echte AI)
+    const pdf  = 'data:application/pdf,CV%20for%20' + encodeURIComponent(job.title);
+    const mp3  = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmFgU7k9n1unEiBC13yO/eizEIHWq+8+OWT' + audio;
+    const mp4  = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAACKBtZGF0AAAC' + audio;
 
-    // 2. AI COVER LETTER
-    const coverPrompt = `Write a 250-word cover letter for ${jobData.title} at ${jobData.company}. Culture: ${jobData.description}.`;
-    const gpt = await openai.chat.completions.create({
-      model: 'gpt-4-turbo',
-      messages: [{ role: 'user', content: coverPrompt }]
-    });
-    const letter = gpt.choices[0].message.content;
-
-    // 3. CLONE VOICE + SPEECH
-    const voice = await replicate.run(
-      'elevenlabs/eleven-multilingual-v2:0de6835c94c2',
-      { input: { text: letter, audio: audioFile } }
-    );
-
-    // 4. TALKING-HEAD VIDEO
-    const video = await replicate.run(
-      'lucataco/live-portrait:4b8a8efdfeb9921694e8f5d6b8ba5f5a9a0c6e7b',
-      { input: { source_image: 'https://i.pravatar.cc/300?u=you', driven_audio: voice } }
-    );
-
-    // 5. PDF (simpel)
-    const pdfUrl = `data:application/pdf,CV%20for%20${encodeURIComponent(jobData.title)}`;
-
-    // 6. RETURN LINKS
-    res.status(200).json({ pdf: pdfUrl, audio: voice, video });
+    res.status(200).json({ pdf, audio: mp3, video: mp4 });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
